@@ -17,6 +17,9 @@ class FlickrPhotosViewController: UICollectionViewController {
     fileprivate let flickr = Flickr()
     fileprivate let itemsPerRow: CGFloat = 3
     
+    fileprivate var selectedPhotos = [FlickrPhoto]()
+    fileprivate let shareTextLabel = UILabel()
+    
     var largePhotoIndexPath: IndexPath? {
         didSet {
             var indexPaths = [IndexPath]()
@@ -33,6 +36,31 @@ class FlickrPhotosViewController: UICollectionViewController {
                     self.collectionView?.scrollToItem(at: largePhotoIndexPath, at: .centeredVertically, animated: true)
                 }
             })
+        }
+    }
+    
+    var sharing: Bool = false {
+        didSet {
+            collectionView?.allowsMultipleSelection = sharing
+            collectionView?.selectItem(at: nil, animated: true, scrollPosition: UICollectionViewScrollPosition())
+            selectedPhotos.removeAll(keepingCapacity: false)
+            
+            guard let shareButton = self.navigationItem.rightBarButtonItems?.first else {
+                return
+            }
+            
+            guard sharing else {
+                navigationItem.setRightBarButtonItems([shareButton], animated: true)
+                return
+            }
+            
+            if let _ = largePhotoIndexPath {
+                largePhotoIndexPath = nil
+            }
+            
+            updateSharedPhotoCount()
+            let sharingDetailItem = UIBarButtonItem(customView: shareTextLabel)
+            navigationItem.setRightBarButtonItems([shareButton, sharingDetailItem], animated: true)
         }
     }
     
@@ -53,6 +81,41 @@ class FlickrPhotosViewController: UICollectionViewController {
         // Dispose of any resources that can be recreated.
     }
 
+    @IBAction func share(_ sender: UIBarButtonItem) {
+        guard !searches.isEmpty else {
+            return
+        }
+        
+        guard !selectedPhotos.isEmpty else {
+            sharing = !sharing
+            return
+        }
+        
+        guard sharing else {
+            return
+        }
+        
+        var imageArray = [UIImage]()
+        for selectedPhoto in selectedPhotos {
+            if let thumbnail = selectedPhoto.thumbnail {
+                imageArray.append(thumbnail)
+            }
+        }
+        
+        if !imageArray.isEmpty {
+            let shareScreen = UIActivityViewController(activityItems: imageArray, applicationActivities: nil)
+            shareScreen.completionWithItemsHandler = { _ in
+                self.sharing = false
+            }
+            let popoverPresentationController = shareScreen.popoverPresentationController
+            popoverPresentationController?.barButtonItem = sender
+            popoverPresentationController?.permittedArrowDirections = .any
+            // TODO: check throws error
+            self.present(shareScreen, animated: true, completion: nil)
+        }
+        
+    }
+    
     /*
     // MARK: - Navigation
 
@@ -63,44 +126,16 @@ class FlickrPhotosViewController: UICollectionViewController {
     }
     */
 
-
-
-    // MARK: UICollectionViewDelegate
-
-    /*
-    // Uncomment this method to specify if the specified item should be highlighted during tracking
-    override func collectionView(_ collectionView: UICollectionView, shouldHighlightItemAt indexPath: IndexPath) -> Bool {
-        return true
-    }
-    */
-
-    /*
-    // Uncomment this method to specify if the specified item should be selected
-    override func collectionView(_ collectionView: UICollectionView, shouldSelectItemAt indexPath: IndexPath) -> Bool {
-        return true
-    }
-    */
-
-    /*
-    // Uncomment these methods to specify if an action menu should be displayed for the specified item, and react to actions performed on the item
-    override func collectionView(_ collectionView: UICollectionView, shouldShowMenuForItemAt indexPath: IndexPath) -> Bool {
-        return false
-    }
-
-    override func collectionView(_ collectionView: UICollectionView, canPerformAction action: Selector, forItemAt indexPath: IndexPath, withSender sender: Any?) -> Bool {
-        return false
-    }
-
-    override func collectionView(_ collectionView: UICollectionView, performAction action: Selector, forItemAt indexPath: IndexPath, withSender sender: Any?) {
-    
-    }
-    */
-
 }
 
 private extension FlickrPhotosViewController {
     func photoForIndexPath(indexPath: IndexPath) -> FlickrPhoto {
         return searches[indexPath.section].searchResults[indexPath.row]
+    }
+    func updateSharedPhotoCount() {
+        shareTextLabel.textColor = themeColor
+        shareTextLabel.text = "\(selectedPhotos.count) photos selected"
+        shareTextLabel.sizeToFit()
     }
 }
 
@@ -199,6 +234,14 @@ extension FlickrPhotosViewController {
         }
     }
     
+    override func collectionView(_ collectionView: UICollectionView, moveItemAt sourceIndexPath: IndexPath, to destinationIndexPath: IndexPath) {
+        var sourceResults = searches[sourceIndexPath.section].searchResults
+        let flickrPhoto = sourceResults.remove(at: sourceIndexPath.row)
+        
+        var destinationResults = searches[destinationIndexPath.section].searchResults
+        destinationResults.insert(flickrPhoto, at: destinationIndexPath.row)
+    }
+    
 }
 
 extension FlickrPhotosViewController : UICollectionViewDelegateFlowLayout {
@@ -237,7 +280,33 @@ extension FlickrPhotosViewController : UICollectionViewDelegateFlowLayout {
 // MARK: - UICollectionViewDelegate
 extension FlickrPhotosViewController {
     override func collectionView(_ collectionView: UICollectionView, shouldSelectItemAt indexPath: IndexPath) -> Bool {
+        guard !sharing else {
+            return true
+        }
         largePhotoIndexPath = largePhotoIndexPath == indexPath ? nil : indexPath
         return false
+    }
+    
+    override func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+        guard sharing else {
+            return
+        }
+        
+        let photo = photoForIndexPath(indexPath: indexPath)
+        selectedPhotos.append(photo)
+        updateSharedPhotoCount()
+    }
+    
+    override func collectionView(_ collectionView: UICollectionView, didDeselectItemAt indexPath: IndexPath) {
+        guard sharing else {
+            return
+        }
+        
+        let photo = photoForIndexPath(indexPath: indexPath)
+        
+        if let index = selectedPhotos.index(of: photo) {
+            selectedPhotos.remove(at: index)
+            updateSharedPhotoCount()
+        }
     }
 }
