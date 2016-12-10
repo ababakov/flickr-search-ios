@@ -153,9 +153,35 @@ extension FlickrPhotosViewController {
         
         
         let flickrPhoto = photoForIndexPath(indexPath: indexPath)
+        
+        cell.activityIndicator.stopAnimating()
+        
+        guard indexPath == largePhotoIndexPath else {
+            cell.imageView.image = flickrPhoto.thumbnail
+            return cell
+        }
+        
+        guard flickrPhoto.largeImage == nil else {
+            cell.imageView.image = flickrPhoto.largeImage
+            return cell
+        }
+        
         cell.backgroundColor = UIColor.white
         
         cell.imageView.image = flickrPhoto.thumbnail
+        cell.activityIndicator.startAnimating()
+        
+        flickrPhoto.loadLargeImage({ loadedFlickrPhoto, error in
+            cell.activityIndicator.stopAnimating()
+            
+            guard loadedFlickrPhoto.largeImage != nil && error == nil else {
+                return
+            }
+            if let cell = collectionView.cellForItem(at: indexPath) as? FlickrPhotoCell,
+                indexPath == self.largePhotoIndexPath {
+                cell.imageView.image = loadedFlickrPhoto.largeImage
+            }
+        })
         
         return cell
     }
@@ -183,7 +209,6 @@ extension FlickrPhotosViewController : UICollectionViewDelegateFlowLayout {
             var size = collectionView.bounds.size
             size.height -= topLayoutGuide.length
             size.height -= (sectionInsets.top + sectionInsets.right)
-            size.width -= (sectionInsets.left + sectionInsets.right)
             size.width -= (sectionInsets.left + sectionInsets.right)
             return flickrPhoto.sizeToFillWidthOfSize(size)
         }
